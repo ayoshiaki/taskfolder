@@ -59,7 +59,6 @@ def archive_folder(number):
            print(f"Moved folder from {folder_path_from} to {folder_path_to}")
        else:
            print(f"Folder for task {number} does not exist")
-   print(f"Folder for task {number} does not exist")
    return
    
 
