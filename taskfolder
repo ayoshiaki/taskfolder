@@ -1,0 +1,93 @@
+#! /usr/bin/env python3
+
+import argparse
+import re
+from datetime import datetime
+import subprocess
+import os
+
+def create(number): 
+    today = datetime.now().strftime('%Y%m%d')
+    text = subprocess.check_output(['task', 'info', str(number)], text=True)
+    uuid_pattern = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+    uuid_match = re.search(uuid_pattern, text)
+    uuid = uuid_match.group(0) if uuid_match else None
+    if uuid:
+        uuid = uuid.split('-')[0]
+    folder_name = f"{today}-{uuid}"
+    base_dir = "/Users/yoshiaki/work/todo"
+    folder_path = os.path.join(base_dir, folder_name)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+        print(f"Created folder: {folder_path}")
+    else:
+        print(f"Folder already exists: {folder_path}")
+
+
+def open_folder(number):
+   text = subprocess.check_output(['task', 'info', str(number)], text=True)
+   uuid_pattern = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+   uuid_match = re.search(uuid_pattern, text)
+   uuid = uuid_match.group(0) if uuid_match else None
+   if uuid:
+       uuid = uuid.split('-')[0]
+       today = datetime.now().strftime('%Y%m%d')
+       folder_name = f"{today}-{uuid}"
+       base_dir = "/Users/yoshiaki/work/todo"
+       folder_path = os.path.join(base_dir, folder_name)
+       if os.path.exists(folder_path):
+           subprocess.run(['open', folder_path])
+           return
+   print(f"Folder for task {number} does not exist")
+   return
+
+def archive_folder(number):
+   text = subprocess.check_output(['task', 'info', str(number)], text=True)
+   uuid_pattern = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+   uuid_match = re.search(uuid_pattern, text)
+   uuid = uuid_match.group(0) if uuid_match else None
+   if uuid:
+       uuid = uuid.split('-')[0]
+       today = datetime.now().strftime('%Y%m%d')
+       folder_name = f"{today}-{uuid}"
+       base_dir_from = "/Users/yoshiaki/work/todo"
+       base_dir_to = "/Users/yoshiaki/work/archive"
+       folder_path_from = os.path.join(base_dir_from, folder_name)
+       folder_path_to = os.path.join(base_dir_to, folder_name)
+       if os.path.exists(folder_path_from):
+           os.rename(folder_path_from, folder_path_to)
+           print(f"Moved folder from {folder_path_from} to {folder_path_to}")
+       else:
+           print(f"Folder for task {number} does not exist")
+   print(f"Folder for task {number} does not exist")
+   return
+   
+
+def main():
+    parser = argparse.ArgumentParser(description="CLI application with create and open actions")
+    subparsers = parser.add_subparsers(dest='command', required=True)
+
+    # Create command
+    create_parser = subparsers.add_parser('create', help='Create action')
+    create_parser.add_argument('number', type=int, help='Number parameter for create')
+
+    # Open command
+    open_parser = subparsers.add_parser('open', help='Open action')
+    open_parser.add_argument('number', type=int, help='Number parameter for open')
+
+    # Archive command
+    archive_parser = subparsers.add_parser('archive', help='Archive action')
+    archive_parser.add_argument('number', type=int, help='Number parameter for archive')
+
+    args = parser.parse_args()
+
+    if args.command == 'create':
+        create(args.number)
+    elif args.command == 'open':
+        open_folder(args.number)
+    elif args.command == 'archive':
+        archive_folder(args.number)
+
+if __name__ == "__main__":
+    main()
+
