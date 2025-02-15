@@ -37,21 +37,57 @@ def open_folder(number):
     else:
         print(f"No folder found for task {number}")
   
+
+
+def get_folder(number):
+    text = subprocess.check_output(['task', 'info', str(number)], text=True)
+    padrao = r'/Users\/yoshiaki\/work\/todo\/[0-9]{8}-[0-9a-fA-F]{8}'  # Captura um caminho completo
+    match = re.search(padrao, text)
+    folder_name = match.group(0) if match else None
+    if folder_name:
+        print(f"{folder_name}")
+  
+
+
 def archive_folder(number):
-   text = subprocess.check_output(['task', 'info', str(number)], text=True)
-   padrao = r'/Users\/yoshiaki\/work\/todo\/[0-9]{8}-[0-9a-fA-F]{8}'  # Captura um caminho completo
-   match = re.search(padrao, text)
-   folder_name = match.group(0) if match else None  
-   if folder_name:
-       base_dir_from = "/Users/yoshiaki/work/todo"
-       base_dir_to = "/Users/yoshiaki/work/archive"
-       folder_path_from = os.path.join(base_dir_from, folder_name)
-       folder_path_to = os.path.join(base_dir_to, folder_name)
-       if os.path.exists(folder_path_from):
-           os.rename(folder_path_from, folder_path_to)
-           print(f"Moved folder from {folder_path_from} to {folder_path_to}")
-       else:
-           print(f"Folder for task {number} does not exist")
+    try:
+        text = subprocess.check_output(['task', 'info', str(number)], text=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing task command: {e}")
+        return
+    
+    pattern = r'/Users/yoshiaki/work/todo/[0-9]{8}-[0-9a-fA-F]{8}'  # Fixed regex
+    match = re.search(pattern, text)
+    
+    if not match:
+        print(f"No folder found for task {number}")
+        return
+    
+    folder_name = os.path.basename(match.group(0))  # Extract folder name only
+    
+    base_dir_from = "/Users/yoshiaki/work/todo"
+    base_dir_to = "/Users/yoshiaki/work/archive"
+    
+    folder_path_from = os.path.join(base_dir_from, folder_name)
+    folder_path_to = os.path.join(base_dir_to, folder_name)
+    
+    if not os.listdir(folder_path_from):  # Verifica se a pasta está vazia
+        try:
+            os.rmdir(folder_path_from)  # Remove a pasta vazia
+            print(f"Deleted empty folder: {folder_path_from}")
+        except OSError as e:
+            print(f"Error deleting folder: {e}")
+        return None
+	
+    if os.path.exists(folder_path_from):
+        try:
+            os.rename(folder_path_from, folder_path_to)
+            print(f"Moved folder from {folder_path_from} to {folder_path_to}")
+        except OSError as e:
+            print(f"Error moving folder: {e}")
+    else:
+        print(f"Folder for task {number} does not exist")
+
  
 
 def main():
@@ -70,6 +106,10 @@ def main():
     archive_parser = subparsers.add_parser('archive', help='Archive action')
     archive_parser.add_argument('number', type=str, help='Number parameter for archive')
 
+    # Archive command
+    get_parser = subparsers.add_parser('get', help='Get folder')
+    get_parser.add_argument('number', type=str, help='Number parameter for get')
+
     args = parser.parse_args()
 
     if args.command == 'create':
@@ -78,6 +118,8 @@ def main():
         open_folder(args.number)
     elif args.command == 'archive':
         archive_folder(args.number)
+    elif args.command == 'get':
+        get_folder(args.number)
 
 if __name__ == "__main__":
     main()
