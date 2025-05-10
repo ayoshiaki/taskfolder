@@ -5,15 +5,14 @@ import re
 from datetime import datetime
 import subprocess
 import os
+import json
 
 def create(number): 
     today = datetime.now().strftime('%Y%m%d')
     text = subprocess.check_output(['task', 'info', str(number)], text=True)
     uuid_pattern = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
     uuid_match = re.search(uuid_pattern, text)
-    uuid = uuid_match.group(0) if uuid_match else None
-    if uuid:
-        uuid = uuid.split('-')[0]
+    uuid = uuid_match.group(0).split('-')[0] if uuid_match else None
     folder_name = f"{today}-{uuid}"
     base_dir = "/Users/yoshiaki/work/todo"
     folder_path = os.path.join(base_dir, folder_name)
@@ -25,29 +24,33 @@ def create(number):
     else:
         print(f"Folder already exists: {folder_path}")
 
-
 def open_folder(number):
-    text = subprocess.check_output(['task', 'info', str(number)], text=True)
-    padrao = r'/Users\/yoshiaki\/work\/todo\/[0-9]{8}-[0-9a-fA-F]{8}'  # Captura um caminho completo
-    match = re.search(padrao, text)
-    folder_name = match.group(0) if match else None
-    if folder_name:
-        subprocess.run(['open', folder_name])
-        print(f"Opened folder: {folder_name}")
-    else:
-        print(f"No folder found for task {number}")
-  
+    base_dirs = ["/Users/yoshiaki/work/todo", "/Users/yoshiaki/work/archive"]
 
+    text = subprocess.check_output(['task', 'info', str(number)], text=True)
+    padrao = r'(/[\w/\-]+/[0-9]{8}-[0-9a-fA-F]{8})'
+
+    match = re.search(padrao, text)
+    folder_name = os.path.basename(match.group(1)) if match else None
+
+    if folder_name:
+        for base_dir in base_dirs:
+            folder_path = os.path.join(base_dir, folder_name)
+            if os.path.exists(folder_path):
+                subprocess.run(['open', folder_path])
+                print(f"Opened folder: {folder_path}")
+                return
+        print(f"Folder '{folder_name}' not found in either location.")
+    else:
+        print(f"No folder associated with task {number}.")
 
 def get_folder(number):
     text = subprocess.check_output(['task', 'info', str(number)], text=True)
-    padrao = r'/Users\/yoshiaki\/work\/todo\/[0-9]{8}-[0-9a-fA-F]{8}'  # Captura um caminho completo
+    padrao = r'/Users\/yoshiaki\/work\/todo\/[0-9]{8}-[0-9a-fA-F]{8}'
     match = re.search(padrao, text)
     folder_name = match.group(0) if match else None
     if folder_name:
         print(f"{folder_name}")
-  
-
 
 def archive_folder(number):
     try:
@@ -55,30 +58,28 @@ def archive_folder(number):
     except subprocess.CalledProcessError as e:
         print(f"Error executing task command: {e}")
         return
-    
-    pattern = r'/Users/yoshiaki/work/todo/[0-9]{8}-[0-9a-fA-F]{8}'  # Fixed regex
+
+    pattern = r'/Users/yoshiaki/work/todo/[0-9]{8}-[0-9a-fA-F]{8}'
     match = re.search(pattern, text)
-    
+
     if not match:
         print(f"No folder found for task {number}")
         return
-    
-    folder_name = os.path.basename(match.group(0))  # Extract folder name only
-    
+
+    folder_name = os.path.basename(match.group(0))
     base_dir_from = "/Users/yoshiaki/work/todo"
     base_dir_to = "/Users/yoshiaki/work/archive"
-    
     folder_path_from = os.path.join(base_dir_from, folder_name)
     folder_path_to = os.path.join(base_dir_to, folder_name)
-    
-    if not os.listdir(folder_path_from):  # Verifica se a pasta está vazia
+
+    if not os.listdir(folder_path_from):
         try:
-            os.rmdir(folder_path_from)  # Remove a pasta vazia
+            os.rmdir(folder_path_from)
             print(f"Deleted empty folder: {folder_path_from}")
         except OSError as e:
             print(f"Error deleting folder: {e}")
-        return None
-	
+        return
+
     if os.path.exists(folder_path_from):
         try:
             os.rename(folder_path_from, folder_path_to)
@@ -88,27 +89,59 @@ def archive_folder(number):
     else:
         print(f"Folder for task {number} does not exist")
 
- 
+def list_folders():
+    base_dirs = ["/Users/yoshiaki/work/todo"]  # Only list from 'todo'
+    folder_pattern = r'[0-9]{8}-[0-9a-fA-F]{8}'
+
+    try:
+        task_data = subprocess.check_output(['task', 'export'], text=True)
+        tasks = json.loads(task_data)
+    except Exception as e:
+        print(f"[Error] Could not load tasks: {e}")
+        tasks = []
+
+    folder_to_description = {}
+    for task in tasks:
+        annotations = task.get("annotations", [])
+        description = task.get("description", "No description")
+        for annotation in annotations:
+            match = re.search(folder_pattern, annotation.get("description", ""))
+            if match:
+                folder_to_description[match.group(0)] = description
+
+    for base_dir in base_dirs:
+        print(f"\nListing folders in: {base_dir}")
+        try:
+            folders = sorted(f for f in os.listdir(base_dir) if re.fullmatch(folder_pattern, f))
+            if not folders:
+                print(" (no folders found)")
+                continue
+
+            for folder in folders:
+                print(f" - {folder}")
+                description = folder_to_description.get(folder)
+                if description:
+                    print(f"    → {description}")
+        except FileNotFoundError:
+            print(f"Directory not found: {base_dir}")
 
 def main():
-    parser = argparse.ArgumentParser(description="CLI application with create and open actions")
+    parser = argparse.ArgumentParser(description="CLI application with task folder management")
     subparsers = parser.add_subparsers(dest='command', required=True)
 
-    # Create command
-    create_parser = subparsers.add_parser('create', help='Create action')
-    create_parser.add_argument('number', type=str, help='Number parameter for create')
+    create_parser = subparsers.add_parser('create', help='Create a folder for a task')
+    create_parser.add_argument('number', type=str, help='Task number')
 
-    # Open command
-    open_parser = subparsers.add_parser('open', help='Open action')
-    open_parser.add_argument('number', type=str, help='Number parameter for open')
+    open_parser = subparsers.add_parser('open', help='Open the folder for a task')
+    open_parser.add_argument('number', type=str, help='Task number')
 
-    # Archive command
-    archive_parser = subparsers.add_parser('archive', help='Archive action')
-    archive_parser.add_argument('number', type=str, help='Number parameter for archive')
+    archive_parser = subparsers.add_parser('archive', help='Archive the folder for a task')
+    archive_parser.add_argument('number', type=str, help='Task number')
 
-    # Archive command
-    get_parser = subparsers.add_parser('get', help='Get folder')
-    get_parser.add_argument('number', type=str, help='Number parameter for get')
+    get_parser = subparsers.add_parser('get', help='Get the folder path for a task')
+    get_parser.add_argument('number', type=str, help='Task number')
+
+    list_parser = subparsers.add_parser('list', help='List all folders with task descriptions')
 
     args = parser.parse_args()
 
@@ -120,7 +153,8 @@ def main():
         archive_folder(args.number)
     elif args.command == 'get':
         get_folder(args.number)
+    elif args.command == 'list':
+        list_folders()
 
 if __name__ == "__main__":
     main()
-
