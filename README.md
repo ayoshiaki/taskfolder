@@ -1,27 +1,35 @@
 # taskfolder
 
-A command-line utility to manage folders associated with your [Taskwarrior](https://taskwarrior.org/) tasks. It automatically creates, opens, archives, and lists folders that are linked to specific task annotations.
+A simple CLI utility to manage folders linked to [Taskwarrior](https://taskwarrior.org/) tasks.  
+It automatically creates, opens, archives, and lists task-specific folders on your local filesystem, while annotating them in Taskwarrior for reference.
 
-**Compatible with Taskwarrior 3.3+**
+## Features
 
----
+- Compatible with Taskwarrior 2.x and 3.x
+- Creates a task-specific folder using the task's UUID
+- Annotates the task with the folder path
+- Opens folders via system call
+- Moves completed folders to an archive directory
+- Lists all folders and shows their linked task descriptions
 
-## 📦 Features
+## Requirements
 
-- 🔧 Create a folder for a task and annotate it
-- 📂 Open the folder associated with a task
-- 🗃️ Archive or delete folders based on content
-- 📋 List all folders with their associated task descriptions
-- 📎 Retrieve the folder path for a task
+- Python 3.7+
+- [Taskwarrior](https://taskwarrior.org/) installed and configured
+- macOS, Linux, or Windows (with minor adaptation)
 
----
+## Folder Structure
 
-## 🛠️ Requirements
+- Task folders are created in: `~/work/todo/`
+- Archived folders are moved to: `~/work/archive/`
+- Folder names follow the pattern: `YYYYMMDD-XXXXXXXX` (date + shortened UUID)
 
-- **Taskwarrior 3.3+**
-- **Python 3.8+**
-- **PyYAML**: install via pip
+## Usage
 
 ```bash
-pip install pyyaml
+./taskfolder create <task_id>   # Create and annotate folder for a task
+./taskfolder open <task_id>     # Open folder linked to a task
+./taskfolder get <task_id>      # Print folder path linked to a task
+./taskfolder archive <task_id>  # Move folder to archive if not empty
+./taskfolder list               # List all folders and linked descriptions
 
