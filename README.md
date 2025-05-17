@@ -24,6 +24,6 @@ A lightweight Python CLI tool to manage local folders linked to [Taskwarrior](ht
 Clone the repository:
 
 ```bash
-git clone https://github.com/your-username/taskfolder-manager.git
-cd taskfolder-manager
+git clone https://github.com/your-username/taskfolder.git
+cd taskfolder
 
