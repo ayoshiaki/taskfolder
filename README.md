@@ -1,29 +1,27 @@
-# TaskFolder Manager
+# taskfolder
 
-A lightweight Python CLI tool to manage local folders linked to [Taskwarrior](https://taskwarrior.org/) tasks. Useful for organizing documents and resources associated with each task.
+A command-line utility to manage folders associated with your [Taskwarrior](https://taskwarrior.org/) tasks. It automatically creates, opens, archives, and lists folders that are linked to specific task annotations.
 
-## Features
+**Compatible with Taskwarrior 3.3+**
 
-- **create**: Creates a folder based on the task’s UUID and annotates the task with its path.
-- **open**: Opens the folder linked to the task (searches in `todo/` and `archive/` directories).
-- **archive**: Moves the task’s folder from the `todo/` directory to the `archive/` directory.
-- **get**: Prints the path of the folder associated with a given task.
-- **list**: Lists all existing folders in `todo/` along with their respective task descriptions.
+---
 
-## Requirements
+## 📦 Features
 
-- Python 3.6 or higher  
-- [Taskwarrior](https://taskwarrior.org/)
-- macOS (uses `open`) — see note below for Linux support  
-- Directory structure:
-  - `/Users/yoshiaki/work/todo/`
-  - `/Users/yoshiaki/work/archive/`
+- 🔧 Create a folder for a task and annotate it
+- 📂 Open the folder associated with a task
+- 🗃️ Archive or delete folders based on content
+- 📋 List all folders with their associated task descriptions
+- 📎 Retrieve the folder path for a task
 
-## Installation
+---
 
-Clone the repository:
+## 🛠️ Requirements
+
+- **Taskwarrior 3.3+**
+- **Python 3.8+**
+- **PyYAML**: install via pip
 
 ```bash
-git clone https://github.com/your-username/taskfolder.git
-cd taskfolder
+pip install pyyaml
 

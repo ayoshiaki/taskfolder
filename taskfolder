@@ -1,147 +1,157 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python3
 
 import argparse
 import re
-from datetime import datetime
-import subprocess
 import os
+import subprocess
 import json
+import yaml
+from datetime import datetime
+from pathlib import Path
 
-def create(number): 
+HOME = Path.home()
+TODO_DIR = HOME / "work" / "todo"
+ARCHIVE_DIR = HOME / "work" / "archive"
+
+def load_task_info(number):
+    try:
+        text = subprocess.check_output(['task', str(number), 'info'], text=True)
+        data = yaml.safe_load(text)
+        return data
+    except subprocess.CalledProcessError as e:
+        print(f"Error loading task info: {e}")
+        return None
+
+def create(number):
     today = datetime.now().strftime('%Y%m%d')
-    text = subprocess.check_output(['task', 'info', str(number)], text=True)
-    uuid_pattern = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
-    uuid_match = re.search(uuid_pattern, text)
-    uuid = uuid_match.group(0).split('-')[0] if uuid_match else None
-    folder_name = f"{today}-{uuid}"
-    base_dir = "/Users/yoshiaki/work/todo"
-    folder_path = os.path.join(base_dir, folder_name)
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
+    info = load_task_info(number)
+    if not info:
+        return
+
+    uuid = info.get('uuid', '')
+    folder_name = f"{today}-{uuid.split('-')[0]}"
+    folder_path = TODO_DIR / folder_name
+
+    if not folder_path.exists():
+        folder_path.mkdir(parents=True)
         print(f"Created folder: {folder_path}")
-        subprocess.run(['task', str(number), 'annotate', folder_path])
+        subprocess.run(['task', str(number), 'annotate', str(folder_path)])
         print(f"Annotated task {number} with folder path: {folder_path}")
     else:
         print(f"Folder already exists: {folder_path}")
 
 def open_folder(number):
-    base_dirs = ["/Users/yoshiaki/work/todo", "/Users/yoshiaki/work/archive"]
+    info = load_task_info(number)
+    if not info:
+        return
 
-    text = subprocess.check_output(['task', 'info', str(number)], text=True)
-    padrao = r'(/[\w/\-]+/[0-9]{8}-[0-9a-fA-F]{8})'
-
-    match = re.search(padrao, text)
-    folder_name = os.path.basename(match.group(1)) if match else None
-
-    if folder_name:
-        for base_dir in base_dirs:
-            folder_path = os.path.join(base_dir, folder_name)
-            if os.path.exists(folder_path):
-                subprocess.run(['open', folder_path])
+    annotations = info.get("annotations", [])
+    path_pattern = re.compile(r'(/[^\s]+/\d{8}-[0-9a-fA-F]{8})')
+    for ann in annotations:
+        match = path_pattern.search(ann.get('description', ''))
+        if match:
+            folder_path = Path(match.group(1))
+            if folder_path.exists():
+                subprocess.run(['open', str(folder_path)])
                 print(f"Opened folder: {folder_path}")
                 return
-        print(f"Folder '{folder_name}' not found in either location.")
-    else:
-        print(f"No folder associated with task {number}.")
+    print(f"No folder found or does not exist for task {number}.")
 
 def get_folder(number):
-    text = subprocess.check_output(['task', 'info', str(number)], text=True)
-    padrao = r'/Users\/yoshiaki\/work\/todo\/[0-9]{8}-[0-9a-fA-F]{8}'
-    match = re.search(padrao, text)
-    folder_name = match.group(0) if match else None
-    if folder_name:
-        print(f"{folder_name}")
+    info = load_task_info(number)
+    if not info:
+        return
+
+    path_pattern = re.compile(r'(/[^\s]+/\d{8}-[0-9a-fA-F]{8})')
+    for ann in info.get("annotations", []):
+        match = path_pattern.search(ann.get("description", ""))
+        if match:
+            print(match.group(1))
+            return
+    print(f"No folder annotation found for task {number}.")
 
 def archive_folder(number):
-    try:
-        text = subprocess.check_output(['task', 'info', str(number)], text=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing task command: {e}")
+    info = load_task_info(number)
+    if not info:
         return
 
-    pattern = r'/Users/yoshiaki/work/todo/[0-9]{8}-[0-9a-fA-F]{8}'
-    match = re.search(pattern, text)
+    path_pattern = re.compile(r'(/[^\s]+/\d{8}-[0-9a-fA-F]{8})')
+    for ann in info.get("annotations", []):
+        match = path_pattern.search(ann.get("description", ""))
+        if match:
+            folder_path_from = Path(match.group(1))
+            folder_name = folder_path_from.name
+            folder_path_to = ARCHIVE_DIR / folder_name
 
-    if not match:
-        print(f"No folder found for task {number}")
-        return
+            if not folder_path_from.exists():
+                print(f"Folder {folder_path_from} does not exist.")
+                return
 
-    folder_name = os.path.basename(match.group(0))
-    base_dir_from = "/Users/yoshiaki/work/todo"
-    base_dir_to = "/Users/yoshiaki/work/archive"
-    folder_path_from = os.path.join(base_dir_from, folder_name)
-    folder_path_to = os.path.join(base_dir_to, folder_name)
+            if not any(folder_path_from.iterdir()):
+                folder_path_from.rmdir()
+                print(f"Deleted empty folder: {folder_path_from}")
+                return
 
-    if not os.listdir(folder_path_from):
-        try:
-            os.rmdir(folder_path_from)
-            print(f"Deleted empty folder: {folder_path_from}")
-        except OSError as e:
-            print(f"Error deleting folder: {e}")
-        return
+            try:
+                folder_path_from.rename(folder_path_to)
+                print(f"Moved folder from {folder_path_from} to {folder_path_to}")
+                return
+            except OSError as e:
+                print(f"Error moving folder: {e}")
+                return
 
-    if os.path.exists(folder_path_from):
-        try:
-            os.rename(folder_path_from, folder_path_to)
-            print(f"Moved folder from {folder_path_from} to {folder_path_to}")
-        except OSError as e:
-            print(f"Error moving folder: {e}")
-    else:
-        print(f"Folder for task {number} does not exist")
+    print(f"No folder annotation found for task {number}.")
 
 def list_folders():
-    base_dirs = ["/Users/yoshiaki/work/todo"]  # Only list from 'todo'
-    folder_pattern = r'[0-9]{8}-[0-9a-fA-F]{8}'
+    folder_pattern = re.compile(r'[0-9]{8}-[0-9a-fA-F]{8}')
+    folder_to_description = {}
 
     try:
-        task_data = subprocess.check_output(['task', 'export'], text=True)
-        tasks = json.loads(task_data)
+        export_text = subprocess.check_output(['task', 'export'], text=True)
+        tasks = yaml.safe_load(export_text)
     except Exception as e:
-        print(f"[Error] Could not load tasks: {e}")
+        print(f"[Error] Could not load task export: {e}")
         tasks = []
 
-    folder_to_description = {}
     for task in tasks:
         annotations = task.get("annotations", [])
         description = task.get("description", "No description")
-        for annotation in annotations:
-            match = re.search(folder_pattern, annotation.get("description", ""))
+        for ann in annotations:
+            match = folder_pattern.search(ann.get("description", ""))
             if match:
                 folder_to_description[match.group(0)] = description
 
-    for base_dir in base_dirs:
-        print(f"\nListing folders in: {base_dir}")
-        try:
-            folders = sorted(f for f in os.listdir(base_dir) if re.fullmatch(folder_pattern, f))
-            if not folders:
-                print(" (no folders found)")
-                continue
-
-            for folder in folders:
-                print(f" - {folder}")
-                description = folder_to_description.get(folder)
-                if description:
-                    print(f"    → {description}")
-        except FileNotFoundError:
-            print(f"Directory not found: {base_dir}")
+    print(f"\nListing folders in: {TODO_DIR}")
+    try:
+        folders = sorted(f.name for f in TODO_DIR.iterdir() if folder_pattern.fullmatch(f.name))
+        if not folders:
+            print(" (no folders found)")
+            return
+        for folder in folders:
+            print(f" - {folder}")
+            description = folder_to_description.get(folder)
+            if description:
+                print(f"    → {description}")
+    except FileNotFoundError:
+        print(f"Directory not found: {TODO_DIR}")
 
 def main():
-    parser = argparse.ArgumentParser(description="CLI application with task folder management")
+    parser = argparse.ArgumentParser(description="Taskwarrior folder manager (v3.3 compatible)")
     subparsers = parser.add_subparsers(dest='command', required=True)
 
-    create_parser = subparsers.add_parser('create', help='Create a folder for a task')
-    create_parser.add_argument('number', type=str, help='Task number')
+    p_create = subparsers.add_parser('create', help='Create folder for task')
+    p_create.add_argument('number', type=str)
 
-    open_parser = subparsers.add_parser('open', help='Open the folder for a task')
-    open_parser.add_argument('number', type=str, help='Task number')
+    p_open = subparsers.add_parser('open', help='Open folder for task')
+    p_open.add_argument('number', type=str)
 
-    archive_parser = subparsers.add_parser('archive', help='Archive the folder for a task')
-    archive_parser.add_argument('number', type=str, help='Task number')
+    p_archive = subparsers.add_parser('archive', help='Archive folder for task')
+    p_archive.add_argument('number', type=str)
 
-    get_parser = subparsers.add_parser('get', help='Get the folder path for a task')
-    get_parser.add_argument('number', type=str, help='Task number')
+    p_get = subparsers.add_parser('get', help='Get folder path')
+    p_get.add_argument('number', type=str)
 
-    list_parser = subparsers.add_parser('list', help='List all folders with task descriptions')
+    subparsers.add_parser('list', help='List folders with task descriptions')
 
     args = parser.parse_args()
 
@@ -158,3 +168,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
