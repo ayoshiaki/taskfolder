@@ -5,92 +5,135 @@ import subprocess
 import os
 import json
 import re
+import platform
+import logging
 from datetime import datetime
 from pathlib import Path
 
+# Configuração de logging
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+
+# Diretórios configuráveis via variáveis de ambiente
 HOME = Path.home()
-TODO_DIR = HOME / "work" / "todo"
-ARCHIVE_DIR = HOME / "work" / "archive"
+TODO_DIR = Path(os.getenv("TASKFOLDER_TODO_DIR", HOME / "work" / "todo"))
+ARCHIVE_DIR = Path(os.getenv("TASKFOLDER_ARCHIVE_DIR", HOME / "work" / "archive"))
+
 
 # Compatível com Taskwarrior 2.x e 3.x
 def load_task_info(number):
     try:
-        output = subprocess.check_output(['task', str(number), 'export'], text=True)
+        output = subprocess.check_output(["task", str(number), "export"], text=True)
         tasks = json.loads(output)
-
         if isinstance(tasks, list) and tasks:
             return tasks[0]
-
-        print(f"[Error] Task {number} not found or export returned empty.")
+        logging.error(f"Task {number} not found or export returned empty.")
         return None
-
     except subprocess.CalledProcessError as e:
-        print(f"[Error] Failed to run 'task {number} export': {e}")
+        logging.error(f"Failed to run 'task {number} export': {e}")
+        return None
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse JSON output: {e}")
         return None
 
-    except json.JSONDecodeError as e:
-        print(f"[Error] Failed to parse JSON output: {e}")
-        return None
+
+def open_path(path):
+    system = platform.system()
+    if system == "Darwin":
+        subprocess.run(["open", str(path)])
+    elif system == "Linux":
+        subprocess.run(["xdg-open", str(path)])
+    elif system == "Windows":
+        os.startfile(str(path))
+    else:
+        logging.warning(f"Unsupported OS: cannot open folder {path}")
+
 
 def create(number):
-    today = datetime.now().strftime('%Y%m%d')
+    today = datetime.now().strftime("%Y%m%d")
     info = load_task_info(number)
     if not info:
-        print(f"[Error] Could not load task {number}")
+        logging.error(f"Could not load task {number}")
         return
 
-    uuid = info.get('uuid', '')
+    annotations = info.get("annotations", [])
+    path_pattern = re.compile(r"(/[^\s:]+/\d{8}-[0-9a-fA-F]{8})")
+
+    # Verifica se já existe uma anotação com pasta válida
+    for ann in annotations:
+        match = path_pattern.search(ann.get("description", ""))
+        if match:
+            existing_path = Path(match.group(1))
+            if existing_path.exists():
+                if TODO_DIR in existing_path.parents:
+                    logging.info(
+                        f"Task {number} already has a valid folder: {existing_path}"
+                    )
+                    return
+                else:
+                    new_path = TODO_DIR / existing_path.name
+                    if not new_path.exists():
+                        new_path.mkdir(parents=True)
+                        logging.info(f"Moved folder to TODO_DIR: {new_path}")
+                    subprocess.run(["task", str(number), "annotate", str(new_path)])
+                    logging.info(f"Annotated task {number} with corrected folder path.")
+                    return
+
+    uuid = info.get("uuid", "")
     folder_name = f"{today}-{uuid.split('-')[0]}"
     folder_path = TODO_DIR / folder_name
 
     if not folder_path.exists():
         folder_path.mkdir(parents=True)
-        print(f"Created folder: {folder_path}")
-        subprocess.run(['task', str(number), 'annotate', str(folder_path)])
-        print(f"Annotated task {number} with folder path.")
+        logging.info(f"Created folder: {folder_path}")
     else:
-        print(f"Folder already exists: {folder_path}")
+        logging.info(f"Folder already exists: {folder_path}")
+
+    subprocess.run(["task", str(number), "annotate", str(folder_path)])
+    logging.info(f"Annotated task {number} with folder path.")
+
 
 def open_folder(number):
     info = load_task_info(number)
     if not info:
-        print(f"[Error] Could not load task {number}")
+        logging.error(f"Could not load task {number}")
         return
 
     annotations = info.get("annotations", [])
-    path_pattern = re.compile(r'(/[^\s]+/\d{8}-[0-9a-fA-F]{8})')
+    path_pattern = re.compile(r"(/[^\s:]+/\d{8}-[0-9a-fA-F]{8})")
 
     for ann in annotations:
-        match = path_pattern.search(ann.get('description', ''))
+        match = path_pattern.search(ann.get("description", ""))
         if match:
             folder_path = Path(match.group(1))
             if folder_path.exists():
-                subprocess.run(['open', str(folder_path)])
-                print(f"Opened folder: {folder_path}")
+                open_path(folder_path)
+                logging.info(f"Opened folder: {folder_path}")
                 return
-    print(f"No folder found for task {number}")
+    logging.warning(f"No folder found for task {number}")
+
 
 def get_folder(number):
     info = load_task_info(number)
     if not info:
-        print(f"[Error] Could not load task {number}")
+        logging.error(f"Could not load task {number}")
         return
 
-    path_pattern = re.compile(r'(/[^\s]+/\d{8}-[0-9a-fA-F]{8})')
+    path_pattern = re.compile(r"(/[^\s:]+/\d{8}-[0-9a-fA-F]{8})")
     for ann in info.get("annotations", []):
         match = path_pattern.search(ann.get("description", ""))
         if match:
             print(match.group(1))
             return
-    print(f"No folder path found for task {number}")
+    logging.warning(f"No folder path found for task {number}")
+
 
 def archive_folder(number):
     info = load_task_info(number)
     if not info:
-        print(f"[Error] Could not load task {number}")
+        logging.error(f"Could not load task {number}")
         return
 
-    path_pattern = re.compile(r'(/[^\s]+/\d{8}-[0-9a-fA-F]{8})')
+    path_pattern = re.compile(r"(/[^\s:]+/\d{8}-[0-9a-fA-F]{8})")
     for ann in info.get("annotations", []):
         match = path_pattern.search(ann.get("description", ""))
         if match:
@@ -99,86 +142,96 @@ def archive_folder(number):
             folder_path_to = ARCHIVE_DIR / folder_name
 
             if not folder_path_from.exists():
-                print(f"Folder does not exist: {folder_path_from}")
+                logging.warning(f"Folder does not exist: {folder_path_from}")
                 return
 
             if not any(folder_path_from.iterdir()):
                 folder_path_from.rmdir()
-                print(f"Deleted empty folder: {folder_path_from}")
+                logging.info(f"Deleted empty folder: {folder_path_from}")
                 return
 
             try:
                 folder_path_from.rename(folder_path_to)
-                print(f"Moved folder to archive: {folder_path_to}")
+                logging.info(f"Moved folder to archive: {folder_path_to}")
                 return
             except OSError as e:
-                print(f"Error moving folder: {e}")
+                logging.error(f"Error moving folder: {e}")
                 return
-    print(f"No folder annotation found for task {number}")
+    logging.warning(f"No folder annotation found for task {number}")
+
 
 def list_folders():
-    folder_pattern = re.compile(r'[0-9]{8}-[0-9a-fA-F]{8}')
-    folder_to_description = {}
+    folder_pattern = re.compile(r"[0-9]{8}-[0-9a-fA-F]{8}")
+    folder_to_task = {}
 
     try:
-        output = subprocess.check_output(['task', 'export'], text=True)
+        output = subprocess.check_output(["task", "export"], text=True)
         tasks = json.loads(output)
     except Exception as e:
-        print(f"[Error] Failed to export tasks: {e}")
+        logging.error(f"Failed to export tasks: {e}")
         return
 
     for task in tasks:
+        task_id = task.get("id", "?")
+        uuid = task.get("uuid", "")
+        description = task.get("description", "No description")
         annotations = task.get("annotations", [])
-        desc = task.get("description", "No description")
         for ann in annotations:
             match = folder_pattern.search(ann.get("description", ""))
             if match:
-                folder_to_description[match.group(0)] = desc
+                folder = match.group(0)
+                folder_to_task[folder] = (task_id, uuid, description)
 
     print(f"\nFolders in: {TODO_DIR}")
     try:
-        folders = sorted(f.name for f in TODO_DIR.iterdir() if folder_pattern.fullmatch(f.name))
+        folders = sorted(
+            f.name for f in TODO_DIR.iterdir() if folder_pattern.fullmatch(f.name)
+        )
         if not folders:
             print("  (no folders found)")
             return
         for folder in folders:
             print(f" - {folder}")
-            if folder in folder_to_description:
-                print(f"    → {folder_to_description[folder]}")
+            if folder in folder_to_task:
+                task_id, uuid, desc = folder_to_task[folder]
+                print(f"    → Task {task_id} ({uuid}): {desc}")
     except FileNotFoundError:
-        print(f"Directory not found: {TODO_DIR}")
+        logging.error(f"Directory not found: {TODO_DIR}")
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Manage folders linked to Taskwarrior tasks")
-    subparsers = parser.add_subparsers(dest='command', required=True)
+    parser = argparse.ArgumentParser(
+        description="Manage folders linked to Taskwarrior tasks"
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    p_create = subparsers.add_parser('create', help='Create folder for task')
-    p_create.add_argument('number', type=str)
+    p_create = subparsers.add_parser("create", help="Create folder for task")
+    p_create.add_argument("number", type=str)
 
-    p_open = subparsers.add_parser('open', help='Open folder for task')
-    p_open.add_argument('number', type=str)
+    p_open = subparsers.add_parser("open", help="Open folder for task")
+    p_open.add_argument("number", type=str)
 
-    p_archive = subparsers.add_parser('archive', help='Archive folder for task')
-    p_archive.add_argument('number', type=str)
+    p_archive = subparsers.add_parser("archive", help="Archive folder for task")
+    p_archive.add_argument("number", type=str)
 
-    p_get = subparsers.add_parser('get', help='Get folder path for task')
-    p_get.add_argument('number', type=str)
+    p_get = subparsers.add_parser("get", help="Get folder path for task")
+    p_get.add_argument("number", type=str)
 
-    subparsers.add_parser('list', help='List all folders and linked task descriptions')
+    subparsers.add_parser("list", help="List all folders and linked task descriptions")
 
     args = parser.parse_args()
 
-    if args.command == 'create':
+    if args.command == "create":
         create(args.number)
-    elif args.command == 'open':
+    elif args.command == "open":
         open_folder(args.number)
-    elif args.command == 'archive':
+    elif args.command == "archive":
         archive_folder(args.number)
-    elif args.command == 'get':
+    elif args.command == "get":
         get_folder(args.number)
-    elif args.command == 'list':
+    elif args.command == "list":
         list_folders()
+
 
 if __name__ == "__main__":
     main()
-
