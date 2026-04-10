@@ -285,8 +285,8 @@ def archive_folder(number: str) -> None:
         logging.error(f"Error moving folder: {e}")
 
 
-def list_folders() -> None:
-    """Lists all folders in the TODO directory and their associated tasks."""
+def list_folders(archived: bool = False) -> None:
+    """Lists all folders in the TODO or ARCHIVE directory and their associated tasks."""
     folder_to_task: Dict[str, tuple[str, str, str]] = {}
 
     try:
@@ -311,20 +311,21 @@ def list_folders() -> None:
                 folder_name = folder_path.name
                 folder_to_task[folder_name] = (str(task_id), uuid, description)
 
-    print(f"\nFolders in: {TODO_DIR}")
-    if not TODO_DIR.exists():
-         logging.warning(f"Directory not found: {TODO_DIR}")
+    target_dir = ARCHIVE_DIR if archived else TODO_DIR
+    print(f"\nFolders in: {target_dir}")
+    if not target_dir.exists():
+         logging.warning(f"Directory not found: {target_dir}")
          return
 
     try:
         folders = sorted(
-            f.name for f in TODO_DIR.iterdir() 
+            f.name for f in target_dir.iterdir()
             if f.is_dir() and FOLDER_NAME_PATTERN.fullmatch(f.name)
         )
         if not folders:
             print("  (no folders found)")
             return
-        
+
         for folder in folders:
             print(f" - {folder}")
             if folder in folder_to_task:
@@ -333,9 +334,9 @@ def list_folders() -> None:
                 print(f"    → {status_str}: {desc}")
             else:
                 print(f"    → (No active task found)")
-                
+
     except OSError as e:
-        logging.error(f"Error listing directory {TODO_DIR}: {e}")
+        logging.error(f"Error listing directory {target_dir}: {e}")
 
 
 def main() -> None:
@@ -363,7 +364,8 @@ def main() -> None:
     p_openurl = subparsers.add_parser("openurl", help="Open URL(s) linked to a task")
     p_openurl.add_argument("number", type=str, help="Task ID or UUID")
 
-    subparsers.add_parser("list", help="List all folders and linked task descriptions")
+    p_list = subparsers.add_parser("list", help="List all folders and linked task descriptions")
+    p_list.add_argument("-a", "--archived", action="store_true", help="List archived folders instead of active ones")
 
     args = parser.parse_args()
 
@@ -380,7 +382,7 @@ def main() -> None:
     elif args.command == "openurl":
         open_task_url(args.number)
     elif args.command == "list":
-        list_folders()
+        list_folders(archived=args.archived)
 
 
 if __name__ == "__main__":

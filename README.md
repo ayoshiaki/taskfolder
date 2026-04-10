@@ -59,6 +59,7 @@ taskfolder open <task_id>       # Open the folder linked to a task
 taskfolder archive <task_id>    # Move the folder to the archive
 taskfolder get <task_id>        # Print the folder path linked to the task
 taskfolder list                 # List folders and associated tasks
+taskfolder list -a              # List archived folders and associated tasks
 ```
 
 ## Example
