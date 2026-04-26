@@ -285,6 +285,60 @@ def archive_folder(number: str) -> None:
         logging.error(f"Error moving folder: {e}")
 
 
+def reopen_folder(number: str) -> None:
+    """Moves the linked folder from archive back to the todo directory."""
+    info = load_task_info(number)
+    if not info:
+        logging.error(f"Could not load task {number}")
+        return
+
+    folder_path_old = _extract_folder_from_task(info)
+    if not folder_path_old:
+        logging.warning(f"No folder annotation found for task {number}")
+        return
+
+    folder_name = folder_path_old.name
+    folder_path_from = ARCHIVE_DIR / folder_name
+    folder_path_to = TODO_DIR / folder_name
+
+    # Ensure todo directory exists
+    if not TODO_DIR.exists():
+        TODO_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not folder_path_from.exists():
+        logging.warning(f"Folder not found in archive: {folder_path_from}")
+        return
+
+    if folder_path_to.exists():
+        logging.error(f"Folder already exists in todo: {folder_path_to}")
+        return
+
+    try:
+        folder_path_from.rename(folder_path_to)
+        logging.info(f"Moved folder back to todo: {folder_path_to}")
+    except OSError as e:
+        logging.error(f"Error moving folder: {e}")
+        return
+
+    # Rewrite annotation: remove old, add new. Move-first ordering means a
+    # taskwarrior failure here leaves the filesystem correct; the user is
+    # informed via the log and can re-annotate manually.
+    try:
+        subprocess.run(
+            ["task", number, "denotate", str(folder_path_old)], check=True
+        )
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to remove old annotation {folder_path_old}: {e}")
+
+    try:
+        subprocess.run(
+            ["task", number, "annotate", str(folder_path_to)], check=True
+        )
+        logging.info(f"Reopened folder: {folder_path_to}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to add new annotation {folder_path_to}: {e}")
+
+
 def list_folders(archived: bool = False) -> None:
     """Lists all folders in the TODO or ARCHIVE directory and their associated tasks."""
     folder_to_task: Dict[str, tuple[str, str, str]] = {}
@@ -354,6 +408,9 @@ def main() -> None:
     p_archive = subparsers.add_parser("archive", help="Archive folder for task")
     p_archive.add_argument("number", type=str, help="Task ID or UUID")
 
+    p_reopen = subparsers.add_parser("reopen", help="Move folder back from archive to todo")
+    p_reopen.add_argument("number", type=str, help="Task ID or UUID")
+
     p_get = subparsers.add_parser("get", help="Get folder path for task")
     p_get.add_argument("number", type=str, help="Task ID or UUID")
 
@@ -375,6 +432,8 @@ def main() -> None:
         open_folder(args.number)
     elif args.command == "archive":
         archive_folder(args.number)
+    elif args.command == "reopen":
+        reopen_folder(args.number)
     elif args.command == "get":
         get_folder(args.number)
     elif args.command == "addurl":
