@@ -275,7 +275,15 @@ def archive_folder(number: str) -> None:
             folder_path_from.rmdir()
             logging.info(f"Deleted empty folder: {folder_path_from}")
         except OSError as e:
-             logging.error(f"Error deleting empty folder: {e}")
+            logging.error(f"Error deleting empty folder: {e}")
+            return
+        try:
+            subprocess.run(
+                ["task", number, "denotate", str(folder_path_from)], check=True
+            )
+            logging.info(f"Removed folder annotation from task {number}")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to remove annotation: {e}")
         return
 
     try:
